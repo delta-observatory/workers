@@ -1,0 +1,17 @@
+[project]
+name = "delta-worker"
+version = "0.1.0"
+description = "Delta Observatory worker: ingestion and scientific methods"
+requires-python = "==3.12.*"
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+filterwarnings = ["ignore::UserWarning:lightkurve.prf"]

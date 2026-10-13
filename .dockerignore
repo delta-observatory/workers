@@ -1,0 +1,6 @@
+.git
+.venv
+.pytest_cache
+tests
+vendor/migrations
+**/__pycache__
