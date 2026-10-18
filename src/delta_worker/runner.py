@@ -41,6 +41,7 @@ def _child(job, inputs, existing, paths, output_file):
         context = methods.MethodContext(
             job=job, parameters=job['parameters'], inputs=inputs, existing=existing,
             raw_root=Path(paths['raw_root']), catalog_root=Path(paths['catalog_root']),
+            contracts_dir=Path(paths['contracts_dir']),
             artifacts=ArtifactWriter(Path(paths['artifact_root']), paths['artifact_prefix']))
         output = methods.get(job['method']['id'])(context)
         record = {'outcome': 'complete', **asdict(output)}
@@ -69,7 +70,8 @@ def run(job, inputs, existing, settings, keep_lease):
     limits = job['limits']
     prefix = f"jobs/{job['job_id']}/{job['attempt']}"
     paths = {'raw_root': str(settings.raw_root), 'catalog_root': str(settings.catalog_root),
-             'artifact_root': str(settings.artifact_root), 'artifact_prefix': prefix}
+             'artifact_root': str(settings.artifact_root), 'artifact_prefix': prefix,
+             'contracts_dir': str(settings.contracts_dir)}
     context = multiprocessing.get_context('spawn')
     with tempfile.TemporaryDirectory(prefix='delta-job-') as scratch:
         output_file = os.path.join(scratch, 'output.json')

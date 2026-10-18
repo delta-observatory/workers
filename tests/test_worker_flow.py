@@ -2,12 +2,16 @@
 
 The test applies the vendored migrations, queues an index job, executes it,
 queues a tess-bls job for WASP-18, executes it, and reads the records.
+It also cancels a running job and checks that a finished job does not change.
 """
+import dataclasses
+import logging
 from pathlib import Path
 import shutil
+import threading
+import time
 import uuid
 
-import pgserver
 import psycopg
 from psycopg.types.json import Jsonb
 import pytest
@@ -20,20 +24,6 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE = ROOT.parent
 CONTRACTS = Contracts(ROOT / 'vendor' / 'contracts')
 WASP18 = 'tess2018234235059-s0002-0000000100100827-0121-s_lc.fits'
-
-
-@pytest.fixture(scope='module')
-def database_url(tmp_path_factory):
-    server = pgserver.get_server(tmp_path_factory.mktemp('pg'), cleanup_mode='stop')
-    base = server.get_uri()
-    with psycopg.connect(base, autocommit=True) as conn:
-        conn.execute('CREATE DATABASE delta')
-    url = base.replace('/postgres?', '/delta?')
-    with psycopg.connect(url, autocommit=True) as conn:
-        for path in sorted((ROOT / 'vendor' / 'migrations').glob('[0-9]*.sql')):
-            conn.execute(path.read_text())
-    yield url
-    server.cleanup()
 
 
 @pytest.fixture
@@ -126,3 +116,65 @@ def test_memory_limit_stops_job(settings, conn):
     assert job['state'] == 'failed'
     assert job['result']['error']['kind'] == 'memory_limit'
     assert conn.execute('SELECT state FROM dataset').fetchone()['state'] == 'invalid'
+
+
+def queue_bls(conn, observation_id):
+    run_id, job_id = str(uuid.uuid4()), str(uuid.uuid4())
+    parameters = CONTRACTS.defaults('tess-bls', 1)
+    document = {'contract': 'job/1', 'job_id': job_id, 'run_id': run_id,
+                'method': {'id': 'tess-bls', 'version': 1}, 'parameters': parameters,
+                'inputs': [{'observation_id': str(observation_id)}],
+                'limits': {'maximum_seconds': 600, 'maximum_memory_mib': 2048}}
+    with conn.transaction():
+        conn.execute("""INSERT INTO run (id, method_id, method_version, parameters, parameters_sha256, requested_by)
+                        VALUES (%s, 'tess-bls', 1, %s, %s, 'test')""",
+                     (run_id, Jsonb(parameters), db.parameters_sha256(parameters)))
+        conn.execute('INSERT INTO run_input VALUES (%s, %s)', (run_id, observation_id))
+        conn.execute('INSERT INTO job (id, run_id, observation_id, document) VALUES (%s, %s, %s, %s)',
+                     (job_id, run_id, observation_id, Jsonb(document)))
+    return job_id
+
+
+def test_cancel_running_job(settings, conn, caplog):
+    """The API cancels a running job. The worker discards the output and continues with the next job."""
+    db.ensure_index_job(conn, CONTRACTS, 'tess-spoc-light-curves', 'test')
+    run_next(conn, settings)
+    observation = conn.execute('SELECT id FROM observation').fetchone()
+    job_id = queue_bls(conn, observation['id'])
+    fast = dataclasses.replace(settings, lease_seconds=3)
+    row = db.claim(conn, fast.worker_id, fast.lease_seconds)
+    assert str(row['id']) == job_id and row['state'] == 'running'
+
+    def cancel():
+        time.sleep(1.5)
+        with psycopg.connect(settings.database_url, autocommit=True) as other:
+            other.execute("""UPDATE job SET state = 'cancelled', finished_at = now(), lease_expires_at = NULL
+                             WHERE id = %s AND state = 'running'""", (job_id,))
+    canceller = threading.Thread(target=cancel)
+    canceller.start()
+    with caplog.at_level(logging.INFO, logger='delta_worker'):
+        process(conn, CONTRACTS, fast, row)
+    canceller.join()
+    job = conn.execute('SELECT * FROM job WHERE id = %s', (job_id,)).fetchone()
+    assert job['state'] == 'cancelled' and job['result'] is None
+    assert conn.execute('SELECT count(*) AS n FROM measurement WHERE job_id = %s', (job_id,)).fetchone()['n'] == 0
+    assert conn.execute('SELECT count(*) AS n FROM artifact WHERE job_id = %s', (job_id,)).fetchone()['n'] == 0
+    assert f'job {job_id} cancelled; output discarded' in caplog.text
+
+    # The worker continues with the next job.
+    db.ensure_index_job(conn, CONTRACTS, 'tess-spoc-light-curves', 'test')
+    assert run_next(conn, settings)['state'] == 'complete'
+
+
+def test_finished_job_does_not_change(settings, conn):
+    db.ensure_index_job(conn, CONTRACTS, 'tess-spoc-light-curves', 'test')
+    job = run_next(conn, settings)
+    assert job['state'] == 'complete'
+    with pytest.raises(psycopg.Error) as error:
+        conn.execute("UPDATE job SET state = 'queued' WHERE id = %s", (job['id'],))
+    assert error.value.sqlstate == 'RC002'
+    # A worker that lost a finished job writes nothing and changes nothing.
+    assert db.finish(conn, job, settings.worker_id, job['result']) is False
+    assert db.expire_exhausted(conn, {}) == 0
+    db.release(conn, job, settings.worker_id)
+    assert conn.execute('SELECT state FROM job WHERE id = %s', (job['id'],)).fetchone()['state'] == 'complete'

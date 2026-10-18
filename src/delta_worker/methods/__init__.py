@@ -24,6 +24,8 @@ class MethodContext:
     catalog_root: Path
     artifacts: ArtifactWriter
     existing: list[dict] = field(default_factory=list)
+    # Vendored contract schemas, for the input manifests that a method reads.
+    contracts_dir: Path | None = None
 
 
 @dataclass

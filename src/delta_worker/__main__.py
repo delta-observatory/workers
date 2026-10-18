@@ -55,6 +55,9 @@ def process(conn, contracts, settings, row):
     if db.finish(conn, row, settings.worker_id, result, index):
         log.info('job %s %s %s in %.1f s', job['job_id'], job['method']['id'], result['outcome'],
                  resources.get('elapsed_seconds', 0))
+    elif db.state(conn, row['id']) == 'cancelled':
+        # The API cancelled the running job. The files of the attempt stay without artifact rows.
+        log.info('job %s cancelled; output discarded', job['job_id'])
     else:
         log.warning('job %s lease lost; result discarded', job['job_id'])
 

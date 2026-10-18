@@ -113,7 +113,8 @@ def observations(conn, ids):
 
 def dataset_observations(conn, dataset_id):
     rows = conn.execute(
-        'SELECT id, relative_path, sha256, state FROM observation WHERE dataset_id = %s', (dataset_id,)).fetchall()
+        'SELECT id, relative_path, sha256, state, provenance FROM observation WHERE dataset_id = %s',
+        (dataset_id,)).fetchall()
     return [plain(r) for r in rows]
 
 
@@ -127,12 +128,14 @@ def _apply_index(conn, index):
         conn.execute(
             """INSERT INTO observation (id, dataset_id, product_type, relative_path, bytes, sha256, target_id,
                    sector, cadence_seconds, time_start, time_stop, time_scale, time_reference, row_count,
-                   header, labels, state, findings)
+                   header, labels, state, findings, provenance)
                VALUES (%(id)s, %(dataset_id)s, 'tess_spoc_light_curve', %(relative_path)s, %(bytes)s, %(sha256)s,
                    %(target_id)s, %(sector)s, %(cadence_seconds)s, %(time_start)s, %(time_stop)s, %(time_scale)s,
-                   %(time_reference)s, %(row_count)s, %(header)s, %(labels)s, %(state)s, %(findings)s)""",
+                   %(time_reference)s, %(row_count)s, %(header)s, %(labels)s, %(state)s, %(findings)s,
+                   %(provenance)s)""",
             {**record, 'dataset_id': dataset_id, 'header': Jsonb(record['header']),
-             'labels': Jsonb(record['labels']), 'findings': Jsonb(record['findings'])})
+             'labels': Jsonb(record['labels']), 'findings': Jsonb(record['findings']),
+             'provenance': Jsonb(record.get('provenance', {}))})
     if index['missing']:
         conn.execute("UPDATE observation SET state = 'missing' WHERE id = ANY(%s)", (index['missing'],))
     for seen in index['seen']:
@@ -142,9 +145,18 @@ def _apply_index(conn, index):
                                 THEN 'ready' ELSE 'invalid' END) ELSE state END
                WHERE id = %s""",
             (seen['relative_path'], Jsonb(index['labels'].get(seen['id'], {})), seen['id']))
+        if 'provenance' in seen:
+            # A listed file of a selection manifest. Root files keep their provenance.
+            conn.execute('UPDATE observation SET provenance = %s WHERE id = %s',
+                         (Jsonb(seen['provenance']), seen['id']))
     conn.execute(
         'UPDATE dataset SET state = %s, findings = %s, last_indexed_at = now() WHERE id = %s',
         (index['state'], Jsonb(index['findings']), dataset_id))
+
+
+def state(conn, job_id):
+    row = conn.execute('SELECT state FROM job WHERE id = %s', (job_id,)).fetchone()
+    return row and row['state']
 
 
 def finish(conn, job, worker_id, result, index=None):
