@@ -107,6 +107,7 @@ uv pip install -p .venv/bin/python -r requirements.txt pytest==8.4.2 pgserver==0
 It also cancels a running `tess-bls` job from another connection, and checks that a finished job does not change.
 `test_selection.py` checks selection manifests: provenance, findings for each refused file, duplicate content, a repeated index, and the absence of a recursive scan.
 The tests read light curves from `../raw/tess-spoc-light-curves/` and skip when the files are absent.
+`test_t01_regression.py` also reads the T01 record from `../experiments/`, a private repository. It skips when that record is absent.
 
 ## Dependencies
 

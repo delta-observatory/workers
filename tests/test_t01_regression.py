@@ -33,6 +33,9 @@ def observation(tic):
 
 @pytest.mark.parametrize('tic', sorted(FILES))
 def test_reproduces_t01(tic, tmp_path):
+    # The T01 record is in the private experiments repository. A public checkout skips this test.
+    if not T01.is_dir():
+        pytest.skip(f'{T01} is not available')
     expected = json.loads((T01 / 'results' / str(tic) / 'search.json').read_text())
     comparison = json.loads((T01 / 'results' / str(tic) / 'comparison.json').read_text())
     obs = observation(tic)
