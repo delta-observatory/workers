@@ -1,8 +1,10 @@
 # Delta Observatory worker
 
+This repository is one component of [Delta Observatory](https://github.com/delta-observatory/delta-observatory). The entry repository describes the application and restores every component.
+
 The worker claims jobs from PostgreSQL, executes a method, and writes measurements, artifacts, and the result.
 It does not call the API. It reads and writes only PostgreSQL rows and files.
-The [contracts](../database/contracts/README.md) define every document that it reads or writes.
+The [contracts](https://github.com/delta-observatory/database/blob/main/contracts/README.md) define every document that it reads or writes.
 
 ## Methods
 
@@ -11,7 +13,7 @@ The [contracts](../database/contracts/README.md) define every document that it r
 | `tess-spoc-index` v1 | Index | Scans `raw/<dataset_id>/*_lc.fits`, and the subdirectory files that selection manifests list. Checks CFITSIO checksums and the time system, reads headers, and writes one observation row and one light-curve artifact for each new file content. Reads labels from `datasets/<dataset_id>/**/manifest.json` files with format `tess-spoc-labels/1`. |
 | `tess-bls` v1 | Analysis | Box least squares transit search on one light curve. Writes the input checks, the prepared series, the periodogram, the search summary, and the measurements. Compares the saved result with the closest known planet when the observation has one. |
 
-`tess-bls` follows the preparation and search of [T01](../experiments/tess-known-planet-recovery/README.md).
+`tess-bls` follows the preparation and search of [T01](https://github.com/delta-observatory/experiments/blob/main/tess-known-planet-recovery/README.md) (private).
 With the default parameters, it gives the same values as T01 for both T01 light curves.
 The method is provisional. Depth accuracy, completeness, and false-alarm rates are not validated.
 
@@ -20,7 +22,7 @@ The method is provisional. Depth accuracy, completeness, and false-alarm rates a
 The index method does not scan subdirectories of `raw/<dataset_id>/`. Research agents keep their downloads there.
 A file in a subdirectory enters the inventory only when a selection manifest lists it.
 A selection manifest is a file `datasets/<dataset_id>/selections/<name>.json` with format `tess-spoc-selection/1`.
-[database/contracts/inputs/tess-spoc-selection/](../database/contracts/README.md#selected-observations) defines it.
+[database/contracts/inputs/tess-spoc-selection/](https://github.com/delta-observatory/database/blob/main/contracts/README.md#selected-observations) defines it.
 Each manifest names the owner of the files and the cohort register entry that registers them. Richard decides each registration.
 
 For each listed file, the method applies these rules:
@@ -122,3 +124,7 @@ uv pip compile requirements.in -c ../experiments/tess-known-planet-recovery/requ
 ## Image
 
 `kubernetes/scripts/build.sh workers` builds `localhost/delta-workers:<tag>` in the cluster.
+
+## License
+
+The code is under the [MIT License](LICENSE).
