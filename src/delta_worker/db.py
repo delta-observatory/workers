@@ -125,6 +125,15 @@ def plain(row):
 def _apply_index(conn, index):
     dataset_id = index['dataset_id']
     for record in index['new']:
+        source = conn.execute("""SELECT a.id, a.manifest_sha256, p.product
+            FROM acquisition a CROSS JOIN LATERAL jsonb_array_elements(a.manifest->'products') p(product)
+            CROSS JOIN LATERAL jsonb_array_elements(a.result->'files') f(file)
+            WHERE a.state='complete' AND p.product->>'filename'=%s
+              AND f.file->>'filename'=%s AND f.file->>'sha256'=%s
+            ORDER BY a.created_at LIMIT 1""", [record['relative_path'], record['relative_path'], record['sha256']]).fetchone()
+        if source:
+            record['provenance'] = {**record.get('provenance', {}), 'acquisition_id': str(source['id']),
+                                    'manifest_sha256': source['manifest_sha256'], 'source': source['product']}
         conn.execute(
             """INSERT INTO observation (id, dataset_id, product_type, relative_path, bytes, sha256, target_id,
                    sector, cadence_seconds, time_start, time_stop, time_scale, time_reference, row_count,

@@ -128,3 +128,23 @@ uv pip compile requirements.in -c ../experiments/tess-known-planet-recovery/requ
 ## License
 
 The code is under the [MIT License](LICENSE).
+
+## Archive acquisition
+
+The existing worker polls the PostgreSQL acquisition queue after scientific jobs.
+It uses the [Astroquery MAST client](https://astroquery.readthedocs.io/en/stable/mast/mast_obsquery.html) for bounded metadata queries.
+Supported selections contain one TIC target, at most eight sectors, and public SPOC 120-second light curves.
+The worker checks file and byte limits before presenting the manifest for approval.
+A person approves the exact manifest checksum through the API.
+
+Each download checks its declared size, FITS checksums, target, sector, cadence, and required columns.
+The worker installs a checked file atomically in `raw/tess-spoc-light-curves/`.
+A session lock prevents duplicate processing by multiple workers.
+After interruption, the worker checks completed files and repeats incomplete files.
+It stops a transfer before exceeding its byte limit or free-space reserve.
+Each file transfer has a 600-second deadline.
+Completed transfers queue the existing index method.
+Observation provenance includes the acquisition ID, manifest checksum, and source product.
+
+The acquisition checks use controlled transfer inputs and a temporary PostgreSQL server.
+They do not evaluate scientific performance.

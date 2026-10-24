@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
+from referencing import Registry, Resource
 
 SUPPORTED_JOB_CONTRACTS = ('job/1',)
 SUPPORTED_METHODS = {('tess-spoc-index', 1), ('tess-bls', 1)}
@@ -16,13 +17,15 @@ class ContractError(ValueError):
 class Contracts:
     def __init__(self, root: Path):
         self.root = root
+        schemas = [json.loads(p.read_text()) for p in root.rglob("*.schema.json")]
+        self.registry = Registry().with_resources((s["$id"], Resource.from_contents(s)) for s in schemas)
 
     @cache
     def schema(self, relative):
         return json.loads((self.root / relative).read_text())
 
     def check(self, relative, document):
-        errors = sorted(Draft202012Validator(self.schema(relative)).iter_errors(document),
+        errors = sorted(Draft202012Validator(self.schema(relative), registry=self.registry).iter_errors(document),
                         key=lambda e: list(e.absolute_path))
         if errors:
             e = errors[0]

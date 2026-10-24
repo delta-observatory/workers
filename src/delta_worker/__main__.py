@@ -4,13 +4,13 @@ import select
 import signal
 import sys
 
-from . import config, db, runner
+from . import config, db, runner, acquisition
 from .contracts import ContractError, Contracts
 
 log = logging.getLogger('delta_worker')
 
 
-class Stop(Exception):
+class Stop(BaseException):
     pass
 
 
@@ -86,6 +86,8 @@ def main():
             if current:
                 process(conn, contracts, settings, current)
                 current = None
+                continue
+            if acquisition.next_request(conn, contracts, settings):
                 continue
             select.select([listener.fileno()], [], [], settings.poll_seconds)
             for _ in listener.notifies(timeout=0):
