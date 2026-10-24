@@ -7,6 +7,7 @@ An incomplete file is restarted. No partial file reaches the observation index.
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import time
@@ -14,7 +15,7 @@ import urllib.parse
 import urllib.request
 
 from psycopg.types.json import Jsonb
-from . import db
+from . import db, storage
 from .fits_checks import verify
 
 
@@ -45,7 +46,7 @@ def query(request):
                 continue
             selected.append({'uri': str(product['dataURI']), 'filename': filename, 'bytes': int(product['size']),
                              'observation_id': str(product['obsID']), 'sector': sector, 'tic_id': request['tic_id'],
-                             'processing_version': str(product['description'])[:200]})
+                             'processing_version': 'archive product code '+(re.search(r'-([0-9]{4})-[a-z]_lc\.fits$',filename).group(1) if re.search(r'-([0-9]{4})-[a-z]_lc\.fits$',filename) else 'unavailable')})
     products = list({p['uri']: p for p in selected}.values())
     products.sort(key=lambda p: (p['sector'], p['filename']))
     if not products:
@@ -84,6 +85,7 @@ def download(product, root, reserve, check_active, opener=urllib.request.urlopen
     target = root / name
     if target.exists() or target.is_symlink():
         return checker(target, product)
+    storage.check(root, product['bytes'])
     temporary = root / ('.' + name + '.partial')
     if temporary.is_symlink():
         raise ValueError('The partial download cannot be a symbolic link.')

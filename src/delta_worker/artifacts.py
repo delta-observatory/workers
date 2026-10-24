@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 
 import numpy as np
+from . import storage
 
 COLUMNS = 'application/vnd.delta.columns+json'
 
@@ -33,6 +34,7 @@ class ArtifactWriter:
         (root / self.prefix).mkdir(parents=True, exist_ok=True)
 
     def _store(self, name, payload: bytes, observation_id, kind, media_type, encoding):
+        storage.check(self.root, len(payload))
         relative = f'{self.prefix}/{name}'
         target = self.root / relative
         partial = target.with_name(target.name + '.part')

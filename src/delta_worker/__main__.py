@@ -4,7 +4,7 @@ import select
 import signal
 import sys
 
-from . import config, db, runner, acquisition
+from . import config, db, runner, acquisition, storage
 from .contracts import ContractError, Contracts
 
 log = logging.getLogger('delta_worker')
@@ -28,8 +28,9 @@ def process(conn, contracts, settings, row):
     software = runner.software(settings.worker_version)
     try:
         contracts.check_job(job)
-    except ContractError as error:
-        record, resources = {'outcome': 'failed', 'error': {'kind': 'contract', 'message': str(error)}}, {}
+        storage.check(settings.artifact_root)
+    except (ContractError, storage.StorageLimit) as error:
+        record, resources = {'outcome': 'failed', 'error': {'kind': 'storage' if isinstance(error, storage.StorageLimit) else 'contract', 'message': str(error)}}, {}
     else:
         inputs = db.observations(conn, [i['observation_id'] for i in job['inputs']])
         existing = db.dataset_observations(conn, job['parameters']['dataset_id']) \

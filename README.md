@@ -148,3 +148,12 @@ Observation provenance includes the acquisition ID, manifest checksum, and sourc
 
 The acquisition checks use controlled transfer inputs and a temporary PostgreSQL server.
 They do not evaluate scientific performance.
+
+## Desktop storage policy
+
+`DELTA_STORAGE_CONFIG` selects the canonical `desktop-storage/1` settings file.
+The worker reads the settings before each job, download, and artifact write.
+The workspace size limit includes managed files under the settings directory.
+The worker preserves existing files when a limit blocks an operation.
+Without desktop settings, artifact writes retain a 512 MiB free-space reserve.
+The archive manifest records its product processing code. Indexed FITS headers preserve the pipeline's `PROCVER` value when present.
